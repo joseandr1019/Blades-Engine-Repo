@@ -21,28 +21,23 @@ int DataManager::last_index_accessed = 0;
 bool DataManager::loadingSave = false;
 
 void DataManager::LoadConfig() {
+	// Load save.config to DataManager if it exists
 	if (std::filesystem::exists("resources/save.config")) {
 		rapidjson::Document doc;
 		ReadJsonFile("resources/save.config", doc);
 		DataManager::num_save_index = doc["num_save_index"].GetInt();
 		DataManager::last_index_accessed = doc["last_index_accessed"].GetInt();
 	}
+
+	// Create save.config using defaults if it doesn't
 	else {
 		rapidjson::Document doc;
 		doc.SetObject();
 		auto& alloc = doc.GetAllocator();
-		doc.AddMember("num_save_index", 3, alloc);
-		doc.AddMember("last_index_accessed", 0, alloc);
+		doc.AddMember("num_save_index", 3, alloc); // 3 saves are a default
+		doc.AddMember("last_index_accessed", 0, alloc); // index 0 is a default
 
-		rapidjson::StringBuffer buffer;
-		rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
-		doc.Accept(writer);
-
-		std::ofstream temp("resources/save.config");
-		if (temp.is_open()) {
-			temp << buffer.GetString();
-			temp.close();
-		}
+		WriteJSONFile("resources/save.config", doc);
 	}
 
 	std::string loadPath = "saves/" + std::to_string(DataManager::last_index_accessed) + "/system.save";
@@ -72,13 +67,8 @@ bool isContainer(const luabridge::LuaRef& table) {
 		if (table["getType"].isFunction()) {
 			return true;
 		}
-		else {
-			return false;
-		}
 	}
-	else {
-		return false;
-	}
+	return false;
 }
 
 std::string serializeTable(const luabridge::LuaRef& table) {
@@ -167,19 +157,26 @@ void SaveToIndex(int index) {
 }
 
 void LoadIndex(int index) {
+	// Valid indexes are between 1 and the config max
+	// Note: If the config max is <= 0, saves are prohibited
 	if (index < 1 || index > DataManager::num_save_index) {
 		std::cout << "error: loading an invalid index" << std::endl;
 		return;
 	}
+
 	else {
 		DataManager::last_index_accessed = index;
 		std::string loadPath = "saves/" + std::to_string(DataManager::last_index_accessed) + "/system.save";
+
+		// Loads the last scene the save was at when save occured
 		if (std::filesystem::exists(loadPath)) {
 			rapidjson::Document doc;
 			ReadJsonFile(loadPath, doc);
 
 			SceneDB::nextScene = doc["last_scene"].GetString();
 		}
+
+		// Loads initial scene if a save does not exist
 		else {
 			loadPath = "resources/game.config";
 			rapidjson::Document doc;
@@ -188,6 +185,7 @@ void LoadIndex(int index) {
 			SceneDB::nextScene = doc["initial_scene"].GetString();
 		}
 
+		// Remove Temp, and note we're loading a save
 		DataManager::loadingSave = true;
 		std::filesystem::remove_all("saves/temp");
 		std::filesystem::create_directories("saves/temp");
@@ -356,22 +354,29 @@ void DataManager::SaveSystem() {
 	if (!SceneDB::systemSaveActors.empty()) {
 		std::string savePath = "saves/temp/system.save";
 
+		// Creates system.save if it doesn't exist
 		rapidjson::Document doc;
 		if (!std::filesystem::exists(savePath)) {
 			std::ofstream file(savePath, std::ios::out);
 		}
+		// Loads system.save if it exists
 		else {
 			ReadJsonFile(savePath, doc);
 		}
+
+		//Iterate through all system save actors
 		for (auto actor : SceneDB::systemSaveActors) {
 			if (!actor->removed && actor->dontDestroyOnLoad) {
 				QueueSystemSave(actor, doc);
 			}
+			// System conceptually works with DDOL actors. They're persistent across scenes
 			else if (!actor->removed && !actor->dontDestroyOnLoad) {
 				std::cout << "Warning: Actor " << actor->GetID() << " (" << actor->GetName()
 					<< ") marked Destroy on Load and System Save. Switch to Scene Save for proper behavior. Actor save voided." << std::endl;
 			}
 		}
+
+		// Write system.save to temp
 		TempSystemSave(doc);
 	}
 }

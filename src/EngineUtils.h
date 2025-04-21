@@ -34,6 +34,18 @@ static void ReadJsonFile(const std::string& path, rapidjson::Document& out_docum
 	}
 }
 
+static void WriteJSONFile(const std::string& write_path, rapidjson::Document& in_document) {
+	rapidjson::StringBuffer buffer;
+	rapidjson::Writer<rapidjson::StringBuffer> writer(buffer);
+	in_document.Accept(writer);
+
+	std::ofstream temp(write_path);
+	if (temp.is_open()) {
+		temp << buffer.GetString();
+		temp.close();
+	}
+}
+
 static void LoadGame(rapidjson::Document& configJson) {
 	ReadJsonFile("resources/game.config", configJson);
 
